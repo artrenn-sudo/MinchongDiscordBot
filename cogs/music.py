@@ -163,7 +163,11 @@ class MusicPlayer:
                 await self.send_now_playing_embed(source_data)
 
             except Exception as e:
-                await self._channel.send(f'⚠️ Lỗi phát nhạc: {e}')
+                import traceback
+                error_trace = traceback.format_exc()
+                print(f"ERROR:discord.player:Exception in player_loop: {error_trace}")
+                
+                await self._channel.send(f'⚠️ Lỗi phát nhạc: {repr(e)}')
                 # CRITICAL FIX: Clear current_data to prevent infinite loop of same error
                 self.current_data = None 
                 self.next.set()
