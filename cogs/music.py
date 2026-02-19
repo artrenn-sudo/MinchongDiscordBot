@@ -15,16 +15,18 @@ YTDL_OPTS = {
     'extract_flat': 'in_playlist',
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    # Optimizations
+    # Low latency optimizations
     'nocheckcertificate': True,
     'ignoreerrors': False,
     'logtostderr': False,
     'no_warnings': True,
+    'live_from_start': True, # Optimize for live/stream
 }
 
+# Optimized FFMPEG options for lower latency
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -bufsize 8192k'
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 -nobuffer', 
+    'options': '-vn -bufsize 2048k -preset ultrafast' 
 }
 
 try:
@@ -202,18 +204,9 @@ class MusicPlayer:
             
         if self.voice_client: self.voice_client.stop()
         
-        # Restore loop mode if needed? usually skip means "Next please", so breaking loop song is expected.
-        # But user might want to keep loop song ON for the NEXT song?
-        # For now, let's disable loop song on skip to avoid confusion.
         if forced_loop_reset:
-             # Identify if we should restore? No, standard behavior is usually "Skip current" -> Play next.
-             # If "Loop Song" was on, it applies to the CURRENT song. So skipping it implies we are done with it.
-             # Does it apply to the next song? "Repeat One". Yes.
-             # So we should restore it.
-             # But my logic in player_loop checks `self.loop_mode == 1` to replay `self.current_data`.
-             # So I need to change `self.current_data`?
-             self.current_data = None # This forces player_loop to get from queue
-             self.loop_mode = 1 # Restore mode
+             self.current_data = None 
+             self.loop_mode = 1 
 
     def parse_duration(self, duration):
         if not duration: return "--:--"
@@ -346,44 +339,32 @@ class Music(commands.Cog):
             self.players[ctx.guild.id] = MusicPlayer(ctx, self)
         return self.players[ctx.guild.id]
 
-    @app_commands.command(name="join")
-    async def join(self, interaction: discord.Interaction):
-        if not interaction.user.voice:
-             return await interaction.response.send_message("❌ vao voice roi nói chuyen voi chi", ephemeral=True)
-        channel = interaction.user.voice.channel
-        if interaction.guild.voice_client:
-            await interaction.guild.voice_client.move_to(channel)
+    async def _join(self, ctx):
+        if not ctx.author.voice:
+             await ctx.reply("❌ vao voice roi nói chuyen voi chi")
+             return False
+        channel = ctx.author.voice.channel
+        if ctx.guild.voice_client:
+            await ctx.guild.voice_client.move_to(channel)
         else:
             await channel.connect()
-        await interaction.response.send_message(f"helu this is minchong bo't {channel.name}")
+        await ctx.reply(f"helu this is minchong bo't {channel.name}")
+        return True
+
+    # --- Slash Commands ---
+    @app_commands.command(name="join")
+    async def join_slash(self, interaction: discord.Interaction):
+        ctx = await commands.Context.from_interaction(interaction)
+        await self._join(ctx)
 
     @app_commands.command(name="leave")
-    async def leave(self, interaction: discord.Interaction):
-        if interaction.guild.voice_client:
-            await interaction.guild.voice_client.disconnect()
-            if interaction.guild.id in self.players:
-                del self.players[interaction.guild.id]
-            await interaction.response.send_message("chac anh phai roi xa noi da...y")
-        else:
-            await interaction.response.send_message("❌ vào voice roi noi chien voi chi")
+    async def leave_slash(self, interaction: discord.Interaction):
+        await self._leave(await commands.Context.from_interaction(interaction))
 
     @app_commands.command(name="play")
-    async def play(self, interaction: discord.Interaction, search: str):
-        if not interaction.guild.voice_client:
-            if interaction.user.voice:
-                await interaction.user.voice.channel.connect()
-            else:
-                return await interaction.response.send_message("❌ vào voice trước đã troi oi!", ephemeral=True)
-        
-        await interaction.response.defer()
-        player = self.get_player(await commands.Context.from_interaction(interaction))
-        
-        try:
-            data = await YTDLSource.create_source(player, search, loop=self.bot.loop)
-            await player.queue.put(data)
-            await interaction.followup.send(f"✅ va sau day la: **{data['title']}**")
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error: {e}")
+    async def play_slash(self, interaction: discord.Interaction, search: str):
+        ctx = await commands.Context.from_interaction(interaction)
+        await self._play(ctx, search)
 
     @app_commands.command(name="loop")
     @app_commands.choices(mode=[
@@ -391,44 +372,131 @@ class Music(commands.Cog):
         app_commands.Choice(name="Song", value=1),
         app_commands.Choice(name="Queue", value=2)
     ])
-    async def loop_cmd(self, interaction: discord.Interaction, mode: int):
+    async def loop_slash(self, interaction: discord.Interaction, mode: int):
         player = self.get_player(await commands.Context.from_interaction(interaction))
         player.loop_mode = mode
         modes = ["Off", "Song", "Queue"]
         await interaction.response.send_message(f"🔁 Loop mode: **{modes[mode]}**")
 
     @app_commands.command(name="queue")
-    async def queue_cmd(self, interaction: discord.Interaction):
-        player = self.get_player(await commands.Context.from_interaction(interaction))
-        if player.queue.empty():
-            return await interaction.response.send_message("📭 co gi dau mà..xóa")
+    async def queue_slash(self, interaction: discord.Interaction):
+         await self._queue(await commands.Context.from_interaction(interaction))
+
+    @app_commands.command(name="clear_queue", description="vay la tat ca do xuong song")
+    async def clear_queue_slash(self, interaction: discord.Interaction):
+        await self._clear_queue(await commands.Context.from_interaction(interaction))
+
+    @app_commands.command(name="skip")
+    async def skip_slash(self, interaction: discord.Interaction):
+        await self._skip(await commands.Context.from_interaction(interaction))
+
+    @app_commands.command(name="stop")
+    async def stop_slash(self, interaction: discord.Interaction):
+        await self._stop(await commands.Context.from_interaction(interaction))
+    
+    # --- Text Commands (Prefixed) ---
+    @commands.command(name="join", aliases=["j"])
+    async def join_text(self, ctx):
+        await self._join(ctx)
+
+    @commands.command(name="leave", aliases=["l", "disconnect"])
+    async def leave_text(self, ctx):
+        await self._leave(ctx)
+
+    @commands.command(name="play", aliases=["p"])
+    async def play_text(self, ctx, *, search):
+        await self._play(ctx, search)
+
+    @commands.command(name="skip", aliases=["s", "next"])
+    async def skip_text(self, ctx):
+        await self._skip(ctx)
+
+    @commands.command(name="stop", aliases=["st"])
+    async def stop_text(self, ctx):
+        await self._stop(ctx)
+
+    @commands.command(name="queue", aliases=["q"])
+    async def queue_text(self, ctx):
+        await self._queue(ctx)
         
+    @commands.command(name="clear", aliases=["c", "cq", "clear_queue"])
+    async def clear_text(self, ctx):
+        await self._clear_queue(ctx)
+
+    @commands.command(name="loop")
+    async def loop_text(self, ctx):
+        player = self.get_player(ctx)
+        player.loop_mode = (player.loop_mode + 1) % 3
+        modes = ["Off", "Song", "Queue"]
+        await ctx.reply(f"🔁 Loop mode: **{modes[player.loop_mode]}**")
+
+    # --- Shared Logic ---
+    async def _leave(self, ctx):
+        if ctx.guild.voice_client:
+            await ctx.guild.voice_client.disconnect()
+            if ctx.guild.id in self.players:
+                del self.players[ctx.guild.id]
+            await ctx.reply("chac anh phai roi xa noi da...y")
+        else:
+            await ctx.reply("❌ vào voice roi noi chien voi chi")
+
+    async def _play(self, ctx, search):
+        if not ctx.guild.voice_client:
+            if not await self._join(ctx): return
+        
+        # Determine valid reply method (slash or text)
+        reply = ctx.send if isinstance(ctx, commands.Context) else ctx.interaction.followup.send
+        if hasattr(ctx, 'interaction') and ctx.interaction and not ctx.interaction.response.is_done():
+             await ctx.interaction.response.defer()
+             reply = ctx.interaction.followup.send
+
+        player = self.get_player(ctx)
+        
+        try:
+            data = await YTDLSource.create_source(player, search, loop=self.bot.loop)
+            data['requester_id'] = ctx.author.id
+            await player.queue.put(data)
+            await reply(f"✅ va sau day la: **{data['title']}**")
+        except Exception as e:
+            await reply(f"❌ Error: {e}")
+
+    async def _skip(self, ctx):
+        player = self.get_player(ctx)
+        await player.skip()
+        # Reply optimization
+        if isinstance(ctx, commands.Context): await ctx.reply("⏩ di nhien roi.. won dong la lua chon cua anduchin.")
+        else: await ctx.interaction.response.send_message("⏩ di nhien roi.. won dong la lua chon cua anduchin.")
+
+    async def _stop(self, ctx):
+        player = self.get_player(ctx)
+        await player.stop()
+        if isinstance(ctx, commands.Context): await ctx.reply("⏹️ min chong xin phep di ve")
+        else: await ctx.interaction.response.send_message("⏹️ min chong xin phep di ve")
+
+    async def _queue(self, ctx):
+        player = self.get_player(ctx)
+        if player.queue.empty():
+            msg = "📭 co gi dau mà..xóa"
+            if isinstance(ctx, commands.Context): await ctx.reply(msg)
+            else: await ctx.interaction.response.send_message(msg)
+            return
+
         upcoming = list(itertools.islice(player.queue._queue, 0, 10))
         desc = ""
         for i, song in enumerate(upcoming):
             desc += f"**{i+1}.** {song['title']}\n"
         
         embed = discord.Embed(title=f"Queue ({player.queue.qsize()})", description=desc)
-        await interaction.response.send_message(embed=embed)
+        if isinstance(ctx, commands.Context): await ctx.send(embed=embed)
+        else: await ctx.interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="clear_queue", description="vay la tat ca do xuong song")
-    async def clear_queue(self, interaction: discord.Interaction):
-        player = self.get_player(await commands.Context.from_interaction(interaction))
+    async def _clear_queue(self, ctx):
+        player = self.get_player(ctx)
         player.queue = asyncio.Queue()
-        player.loop_mode = 0 # Reset loop too
-        await interaction.response.send_message("🗑️ con gi nữa.đâu")
-
-    @app_commands.command(name="skip")
-    async def skip(self, interaction: discord.Interaction):
-        player = self.get_player(await commands.Context.from_interaction(interaction))
-        await player.skip()
-        await interaction.response.send_message("⏩ di nhien roi.. won dong la lua chon cua anduchin.")
-
-    @app_commands.command(name="stop")
-    async def stop(self, interaction: discord.Interaction):
-        player = self.get_player(await commands.Context.from_interaction(interaction))
-        await player.stop()
-        await interaction.response.send_message("⏹️ min chong xin phep di ve")
+        player.loop_mode = 0
+        msg = "🗑️ con gi nữa.đâu"
+        if isinstance(ctx, commands.Context): await ctx.reply(msg)
+        else: await ctx.interaction.response.send_message(msg)
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
