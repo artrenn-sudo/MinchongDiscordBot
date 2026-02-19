@@ -73,13 +73,14 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
 class MusicPlayer:
     """A class which is assigned to each guild using the bot for Music."""
-    __slots__ = ('bot', '_guild', '_channel', '_cog', 'queue', 'next', 'current', 'np', 'volume', 'voice_client', 'start_time', 'pause_start', 'pause_duration')
+    __slots__ = ('bot', '_guild', '_channel', '_cog', 'queue', 'next', 'current', 'np', 'volume', 'voice_client', 
+                 'start_time', 'pause_start', 'pause_duration', 'seeking', 'current_data', 'seek_position')
 
-    def __init__(self, ctx):
+    def __init__(self, ctx, cog):
         self.bot = ctx.bot
         self._guild = ctx.guild
         self._channel = ctx.channel
-        self._cog = ctx.cog
+        self._cog = cog
 
         self.queue = asyncio.Queue()
         self.next = asyncio.Event()
@@ -341,7 +342,7 @@ class Music(commands.Cog):
 
     def get_player(self, ctx):
         if ctx.guild.id not in self.players:
-            self.players[ctx.guild.id] = MusicPlayer(ctx)
+            self.players[ctx.guild.id] = MusicPlayer(ctx, self)
         return self.players[ctx.guild.id]
 
     @app_commands.command(name="join", description="Tham gia voice channel")
