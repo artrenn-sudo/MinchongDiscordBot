@@ -1,0 +1,9 @@
+@echo off
+echo Fixing Discord installation...
+pip uninstall -y discord
+pip uninstall -y discord.py
+echo Installing correct discord.py...
+pip install discord.py
+echo Done! Starting bot...
+python main.py
+pause
