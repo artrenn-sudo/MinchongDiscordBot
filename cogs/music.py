@@ -252,7 +252,7 @@ class AddSongModal(discord.ui.Modal, title="mỗi tháng 1 mv"):
             data['requester_id'] = interaction.user.id
             
             await self.player.queue.put(data)
-            await interaction.followup.send(f"✅ mỗi tháng 1 mv: **{data.get('title', 'Unknown')}**", ephemeral=True)
+            await interaction.followup.send(f"mỗi tháng 1 mv: **{data.get('title', 'Unknown')}**", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Lỗi: {e}", ephemeral=True)
 
