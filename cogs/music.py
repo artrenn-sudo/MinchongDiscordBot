@@ -351,10 +351,11 @@ class Music(commands.Cog):
         embed = discord.Embed(title=f"Queue ({player.queue.qsize()})", description=desc)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="clear")
-    async def clear(self, interaction: discord.Interaction):
+    @app_commands.command(name="clear_queue", description="Xóa toàn bộ hàng đợi nhạc")
+    async def clear_queue(self, interaction: discord.Interaction):
         player = self.get_player(await commands.Context.from_interaction(interaction))
         player.queue = asyncio.Queue()
+        player.loop_mode = 0 # Reset loop too
         await interaction.response.send_message("🗑️ Đã xóa hàng đợi.")
 
     @app_commands.command(name="skip")
