@@ -241,7 +241,7 @@ class MusicPlayer:
              except: pass
         self.np = await self._channel.send(embed=embed, view=view)
 
-class AddSongModal(discord.ui.Modal, title="Thêm bài hát"):
+class AddSongModal(discord.ui.Modal, title="mỗi tháng 1 mv"):
     search_query = discord.ui.TextInput(label="Tên bài hát hoặc URL", placeholder="Nhập tên bài hát...", required=True)
 
     def __init__(self, player):
@@ -261,7 +261,7 @@ class AddSongModal(discord.ui.Modal, title="Thêm bài hát"):
             data['requester_id'] = interaction.user.id
             
             await self.player.queue.put(data)
-            await interaction.followup.send(f"✅ Đã thêm: **{data.get('title', 'Unknown')}**", ephemeral=True)
+            await interaction.followup.send(f"✅ mỗi tháng 1 mv: **{data.get('title', 'Unknown')}**", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Lỗi: {e}", ephemeral=True)
 
@@ -293,23 +293,23 @@ class MusicControls(discord.ui.View):
         if vc.is_playing():
             vc.pause()
             self.player.pause_start = time.time()
-            await interaction.response.send_message("⏸️ Tạm dừng", ephemeral=True)
+            await interaction.response.send_message("⏸️ po xì po", ephemeral=True)
         elif vc.is_paused():
             vc.resume()
             if self.player.pause_start > 0:
                 self.player.pause_duration += (time.time() - self.player.pause_start)
                 self.player.pause_start = 0
-            await interaction.response.send_message("▶️ Tiếp tục", ephemeral=True)
+            await interaction.response.send_message("▶️ tieps tụcs", ephemeral=True)
 
     @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary, row=0)
     async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.skip()
-        await interaction.response.send_message("⏩ Skip", ephemeral=True)
+        await interaction.response.send_message("⏩ oops, em lại càng muốn hát", ephemeral=True)
 
     @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger, row=0)
     async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.stop()
-        await interaction.response.send_message("⏹️ Stop", ephemeral=True)
+        await interaction.response.send_message("⏹️ vay la cham het roi dung ko", ephemeral=True)
     
     @discord.ui.button(label="Loop Off", emoji="➡️", style=discord.ButtonStyle.secondary, custom_id="loop_btn", row=0)
     async def loop(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -349,13 +349,13 @@ class Music(commands.Cog):
     @app_commands.command(name="join")
     async def join(self, interaction: discord.Interaction):
         if not interaction.user.voice:
-             return await interaction.response.send_message("❌ Vào voice trước!", ephemeral=True)
+             return await interaction.response.send_message("❌ vao voice roi nói chuyen voi chi", ephemeral=True)
         channel = interaction.user.voice.channel
         if interaction.guild.voice_client:
             await interaction.guild.voice_client.move_to(channel)
         else:
             await channel.connect()
-        await interaction.response.send_message(f"✅ Joined {channel.name}")
+        await interaction.response.send_message(f"helu this is minchong bo't {channel.name}")
 
     @app_commands.command(name="leave")
     async def leave(self, interaction: discord.Interaction):
@@ -363,9 +363,9 @@ class Music(commands.Cog):
             await interaction.guild.voice_client.disconnect()
             if interaction.guild.id in self.players:
                 del self.players[interaction.guild.id]
-            await interaction.response.send_message("👋 Bye!")
+            await interaction.response.send_message("chac anh phai roi xa noi da...y")
         else:
-            await interaction.response.send_message("❌ Không ở trong voice.")
+            await interaction.response.send_message("❌ vào voice roi noi chien voi chi")
 
     @app_commands.command(name="play")
     async def play(self, interaction: discord.Interaction, search: str):
@@ -373,7 +373,7 @@ class Music(commands.Cog):
             if interaction.user.voice:
                 await interaction.user.voice.channel.connect()
             else:
-                return await interaction.response.send_message("❌ Vào voice trước!", ephemeral=True)
+                return await interaction.response.send_message("❌ vào voice trước đã troi oi!", ephemeral=True)
         
         await interaction.response.defer()
         player = self.get_player(await commands.Context.from_interaction(interaction))
@@ -381,7 +381,7 @@ class Music(commands.Cog):
         try:
             data = await YTDLSource.create_source(player, search, loop=self.bot.loop)
             await player.queue.put(data)
-            await interaction.followup.send(f"✅ Added: **{data['title']}**")
+            await interaction.followup.send(f"✅ va sau day la: **{data['title']}**")
         except Exception as e:
             await interaction.followup.send(f"❌ Error: {e}")
 
@@ -401,7 +401,7 @@ class Music(commands.Cog):
     async def queue_cmd(self, interaction: discord.Interaction):
         player = self.get_player(await commands.Context.from_interaction(interaction))
         if player.queue.empty():
-            return await interaction.response.send_message("📭 Hàng đợi trống.")
+            return await interaction.response.send_message("📭 co gi dau mà..xóa")
         
         upcoming = list(itertools.islice(player.queue._queue, 0, 10))
         desc = ""
@@ -411,24 +411,24 @@ class Music(commands.Cog):
         embed = discord.Embed(title=f"Queue ({player.queue.qsize()})", description=desc)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="clear_queue", description="Xóa toàn bộ hàng đợi nhạc")
+    @app_commands.command(name="clear_queue", description="vay la tat ca do xuong song")
     async def clear_queue(self, interaction: discord.Interaction):
         player = self.get_player(await commands.Context.from_interaction(interaction))
         player.queue = asyncio.Queue()
         player.loop_mode = 0 # Reset loop too
-        await interaction.response.send_message("🗑️ Đã xóa hàng đợi.")
+        await interaction.response.send_message("🗑️ con gi nữa.đâu")
 
     @app_commands.command(name="skip")
     async def skip(self, interaction: discord.Interaction):
         player = self.get_player(await commands.Context.from_interaction(interaction))
         await player.skip()
-        await interaction.response.send_message("⏩ Skipped.")
+        await interaction.response.send_message("⏩ di nhien roi.. won dong la lua chon cua anduchin.")
 
     @app_commands.command(name="stop")
     async def stop(self, interaction: discord.Interaction):
         player = self.get_player(await commands.Context.from_interaction(interaction))
         await player.stop()
-        await interaction.response.send_message("⏹️ Stopped.")
+        await interaction.response.send_message("⏹️ min chong xin phep di ve")
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
