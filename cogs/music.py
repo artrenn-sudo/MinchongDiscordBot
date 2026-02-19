@@ -15,18 +15,17 @@ YTDL_OPTS = {
     'extract_flat': 'in_playlist',
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    # Low latency optimizations
+    # Stability optimizations
     'nocheckcertificate': True,
     'ignoreerrors': False,
     'logtostderr': False,
     'no_warnings': True,
-    'live_from_start': True, # Optimize for live/stream
 }
 
-# Optimized FFMPEG options for lower latency
+# Safer FFMPEG options
 FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 -nobuffer', 
-    'options': '-vn -bufsize 2048k -preset ultrafast' 
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 
+    'options': '-vn' 
 }
 
 try:
@@ -62,7 +61,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
         elif os.path.isfile('bin/ffmpeg.exe'):
              executable = 'bin/ffmpeg.exe'
 
-        # Merge options
         ffmpeg_opts = FFMPEG_OPTIONS.copy()
         if start_time > 0:
              # Add seeking to before_options

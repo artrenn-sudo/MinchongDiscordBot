@@ -23,7 +23,7 @@ class Fun(commands.Cog):
         api_key = os.getenv('GEMINI_API_KEY')
         if api_key:
             genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-pro')
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
             self.has_ai = True
         else:
             self.has_ai = False
