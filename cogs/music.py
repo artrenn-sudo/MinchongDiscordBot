@@ -150,7 +150,9 @@ class MusicPlayer:
                 return
 
             try:
-                source = await YTDLSource.from_url(source_data['webpage_url'], loop=self.bot.loop, stream=True, start_time=self.seek_position)
+                # Source creation (streaming)
+                webpage_url = source_data.get('webpage_url', source_data.get('url'))
+                source = await YTDLSource.from_url(webpage_url, loop=self.bot.loop, stream=True, start_time=self.seek_position)
                 self.current = source
                 
                 self.start_time = time.time() - self.seek_position
@@ -162,6 +164,8 @@ class MusicPlayer:
 
             except Exception as e:
                 await self._channel.send(f'⚠️ Lỗi phát nhạc: {e}')
+                # CRITICAL FIX: Clear current_data to prevent infinite loop of same error
+                self.current_data = None 
                 self.next.set()
 
             await self.next.wait()
@@ -218,7 +222,10 @@ class MusicPlayer:
         return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}" if hours > 0 else f"{int(minutes):02d}:{int(seconds):02d}"
 
     async def send_now_playing_embed(self, data):
-        embed = discord.Embed(title="🎶 Đang phát", description=f"[{data['title']}]({data['webpage_url']})", color=discord.Color.brand_green())
+        url = data.get('webpage_url') or data.get('url') or ''
+        title = data.get('title', 'Unknown Title')
+        
+        embed = discord.Embed(title="🎶 Đang phát", description=f"[{title}]({url})", color=discord.Color.brand_green())
         embed.set_thumbnail(url=data.get('thumbnail'))
         embed.add_field(name="Thời lượng", value=self.parse_duration(data.get('duration')), inline=True)
         embed.add_field(name="Yêu cầu bởi", value=f"<@{data.get('requester_id', 'Unknown')}>" if 'requester_id' in data else "Unknown", inline=True)
@@ -245,14 +252,16 @@ class AddSongModal(discord.ui.Modal, title="Thêm bài hát"):
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             query = self.search_query.value
-            # Use create_source but need handle to loop... passing bot loop
             data = await YTDLSource.create_source(self.player, query, loop=self.player.bot.loop)
             
-            # Add requester info
+            # Ensure critical keys exist
+            if 'webpage_url' not in data and 'url' in data:
+                data['webpage_url'] = data['url']
+                
             data['requester_id'] = interaction.user.id
             
             await self.player.queue.put(data)
-            await interaction.followup.send(f"✅ Đã thêm: **{data['title']}**", ephemeral=True)
+            await interaction.followup.send(f"✅ Đã thêm: **{data.get('title', 'Unknown')}**", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Lỗi: {e}", ephemeral=True)
 
