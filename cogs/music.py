@@ -454,7 +454,7 @@ class Music(commands.Cog):
             data = await YTDLSource.create_source(player, search, loop=self.bot.loop)
             data['requester_id'] = ctx.author.id
             await player.queue.put(data)
-            await reply(f"✅ va sau day la: **{data['title']}**")
+            await reply(f"va sau day la: **{data['title']}**")
         except Exception as e:
             await reply(f"❌ Error: {e}")
 
