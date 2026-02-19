@@ -19,7 +19,7 @@ intents.message_content = True
 
 class MinchongBot(commands.Bot):
     def __init__(self):
-        super().__init__(command_prefix="!", intents=intents, help_command=commands.DefaultHelpCommand())
+        super().__init__(command_prefix=["r!", "!"], intents=intents, help_command=commands.DefaultHelpCommand())
 
     async def setup_hook(self):
         # Load extensions/cogs
