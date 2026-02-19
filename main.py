@@ -43,7 +43,7 @@ class MinchongBot(commands.Bot):
         await self.change_presence(
             activity=discord.Streaming(
                 name="sanse | choivoigiadinh",
-                url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                url="https://www.youtube.com/watch?v=ekr2nIex040"
             )
         )
 
