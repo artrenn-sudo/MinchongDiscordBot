@@ -4,3 +4,4 @@ aiohttp
 python-dotenv
 ffmpeg-python
 PyNaCl
+google-generativeai
