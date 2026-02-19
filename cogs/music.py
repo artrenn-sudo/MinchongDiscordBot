@@ -221,10 +221,11 @@ class MusicPlayer:
         embed = discord.Embed(title="🎶 Đang phát", description=f"[{data['title']}]({data['webpage_url']})", color=discord.Color.brand_green())
         embed.set_thumbnail(url=data.get('thumbnail'))
         embed.add_field(name="Thời lượng", value=self.parse_duration(data.get('duration')), inline=True)
+        embed.add_field(name="Yêu cầu bởi", value=f"<@{data.get('requester_id', 'Unknown')}>" if 'requester_id' in data else "Unknown", inline=True)
         
         status = []
         if self.loop_mode == 1: status.append("🔂 Lặp bài")
-        if self.loop_mode == 2: status.append("🔁 Lặp bài")
+        if self.loop_mode == 2: status.append("🔁 Lặp hàng đợi")
         if status: embed.set_footer(text=" | ".join(status))
 
         view = MusicControls(self)
@@ -233,16 +234,51 @@ class MusicPlayer:
              except: pass
         self.np = await self._channel.send(embed=embed, view=view)
 
+class AddSongModal(discord.ui.Modal, title="Thêm bài hát"):
+    search_query = discord.ui.TextInput(label="Tên bài hát hoặc URL", placeholder="Nhập tên bài hát...", required=True)
+
+    def __init__(self, player):
+        super().__init__()
+        self.player = player
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            query = self.search_query.value
+            # Use create_source but need handle to loop... passing bot loop
+            data = await YTDLSource.create_source(self.player, query, loop=self.player.bot.loop)
+            
+            # Add requester info
+            data['requester_id'] = interaction.user.id
+            
+            await self.player.queue.put(data)
+            await interaction.followup.send(f"✅ Đã thêm: **{data['title']}**", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Lỗi: {e}", ephemeral=True)
+
 class MusicControls(discord.ui.View):
     def __init__(self, player):
         super().__init__(timeout=None)
         self.player = player
+        self.update_buttons()
 
-    @discord.ui.button(label="⏪ 10s", style=discord.ButtonStyle.secondary)
-    async def rewind(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._seek_relative(interaction, -10)
+    def update_buttons(self):
+        # Update Loop Button style/label based on state
+        loop_btn = [x for x in self.children if x.custom_id == "loop_btn"][0]
+        if self.player.loop_mode == 0:
+            loop_btn.label = "Loop Off"
+            loop_btn.style = discord.ButtonStyle.secondary
+            loop_btn.emoji = "➡️"
+        elif self.player.loop_mode == 1:
+            loop_btn.label = "Loop Song"
+            loop_btn.style = discord.ButtonStyle.primary
+            loop_btn.emoji = "🔂"
+        elif self.player.loop_mode == 2:
+            loop_btn.label = "Loop Queue"
+            loop_btn.style = discord.ButtonStyle.success
+            loop_btn.emoji = "🔁"
 
-    @discord.ui.button(label="⏯️", style=discord.ButtonStyle.primary)
+    @discord.ui.button(emoji="⏯️", style=discord.ButtonStyle.primary, row=0)
     async def pause(self, interaction: discord.Interaction, button: discord.ui.Button):
         vc = interaction.guild.voice_client
         if vc.is_playing():
@@ -256,17 +292,32 @@ class MusicControls(discord.ui.View):
                 self.player.pause_start = 0
             await interaction.response.send_message("▶️ Tiếp tục", ephemeral=True)
 
-    @discord.ui.button(label="⏭️", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary, row=0)
     async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.skip()
         await interaction.response.send_message("⏩ Skip", ephemeral=True)
-        
-    @discord.ui.button(label="⏹️", style=discord.ButtonStyle.danger)
+
+    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger, row=0)
     async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.stop()
         await interaction.response.send_message("⏹️ Stop", ephemeral=True)
+    
+    @discord.ui.button(label="Loop Off", emoji="➡️", style=discord.ButtonStyle.secondary, custom_id="loop_btn", row=0)
+    async def loop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Cycle modes: 0 -> 1 -> 2 -> 0
+        self.player.loop_mode = (self.player.loop_mode + 1) % 3
+        self.update_buttons()
+        await interaction.response.edit_message(view=self) # Update view in-place
 
-    @discord.ui.button(label="10s ⏩", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Add Song", emoji="➕", style=discord.ButtonStyle.success, row=1)
+    async def add_song(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AddSongModal(self.player))
+
+    @discord.ui.button(label="-10s", style=discord.ButtonStyle.secondary, row=2)
+    async def rewind(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._seek_relative(interaction, -10)
+        
+    @discord.ui.button(label="+10s", style=discord.ButtonStyle.secondary, row=2)
     async def forward(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._seek_relative(interaction, 10)
 
