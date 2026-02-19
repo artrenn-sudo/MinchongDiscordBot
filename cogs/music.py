@@ -20,6 +20,17 @@ YTDL_OPTS = {
     'ignoreerrors': False,
     'logtostderr': False,
     'no_warnings': True,
+    # Anti-bot bypass
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web'],
+            'player_skip': ['webpage', 'configs', 'js'],
+            'include_ssl_logs': [True]
+        }
+    },
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
 }
 
 # Safer FFMPEG options
