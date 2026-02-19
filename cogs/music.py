@@ -419,8 +419,8 @@ class Music(commands.Cog):
     async def queue_text(self, ctx):
         await self._queue(ctx)
         
-    @commands.command(name="clear", aliases=["c", "cq", "clear_queue"])
-    async def clear_text(self, ctx):
+    @commands.command(name="clear_queue", aliases=["c", "cq"])
+    async def clear_queue_text(self, ctx):
         await self._clear_queue(ctx)
 
     @commands.command(name="loop")
