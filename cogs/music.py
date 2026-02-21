@@ -28,9 +28,6 @@ YTDL_OPTS = {
             'player_skip': ['webpage', 'configs', 'js'],
             'include_ssl_logs': [True]
         }
-    },
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'
     }
 }
 
@@ -92,6 +89,8 @@ class YTDLSource(discord.PCMVolumeTransformer):
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(search, download=False))
 
         if 'entries' in data:
+            if not data['entries']:
+                raise Exception("Could not find any songs matching your search.")
             data = data['entries'][0]
             
         return data
