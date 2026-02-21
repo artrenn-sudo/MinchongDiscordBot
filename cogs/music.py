@@ -24,9 +24,7 @@ YTDL_OPTS = {
     'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None, 
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios', 'web'], # Switch to ios as it often bypasses better than android on servers
-            'player_skip': ['webpage', 'configs', 'js'],
-            'include_ssl_logs': [True]
+            'player_client': ['ios', 'web'],
         }
     }
 }
@@ -59,6 +57,8 @@ class YTDLSource(discord.PCMVolumeTransformer):
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
 
         if 'entries' in data:
+            if not data['entries']:
+                raise Exception('YouTube đang chặn server. Vui lòng thử lại sau hoặc dùng cookies.txt')
             data = data['entries'][0]
 
         filename = data['url'] if stream else ytdl.prepare_filename(data)
