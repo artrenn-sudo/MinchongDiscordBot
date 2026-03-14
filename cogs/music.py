@@ -23,7 +23,8 @@ def _get_cookie_file():
     return None
 
 YTDL_OPTS = {
-    'format': 'bestaudio*/best',
+    'format': 'ba/b',  # best audio, fallback to best overall
+    'format_sort': ['abr', 'asr'],  # prefer higher audio bitrate
     'noplaylist': True,
     'quiet': True,
     'extract_flat': 'in_playlist',
@@ -38,7 +39,7 @@ YTDL_OPTS = {
     'cookiefile': _get_cookie_file(),
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios', 'web'],
+            'player_client': ['mweb', 'default'],
         }
     }
 }
