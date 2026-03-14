@@ -22,9 +22,9 @@ def _get_cookie_file():
             return name
     return None
 
-# ── yt-dlp Options (format-agnostic to avoid Railway issues) ──
+# ── yt-dlp Options (no format restriction — let yt-dlp auto-select) ──
 YTDL_OPTS = {
-    'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+    # NO 'format' key — yt-dlp uses default (best available). FFMPEG -vn strips video.
     'noplaylist': True,
     'quiet': True,
     'extract_flat': 'in_playlist',
@@ -35,7 +35,6 @@ YTDL_OPTS = {
     'logtostderr': False,
     'no_warnings': True,
     'cookiefile': _get_cookie_file(),
-    # No player_client restriction — let yt-dlp auto-select
 }
 
 FFMPEG_OPTIONS = {
