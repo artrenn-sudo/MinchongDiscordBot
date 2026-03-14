@@ -23,7 +23,7 @@ def _get_cookie_file():
     return None
 
 YTDL_OPTS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio*/best',
     'noplaylist': True,
     'quiet': True,
     'extract_flat': 'in_playlist',
