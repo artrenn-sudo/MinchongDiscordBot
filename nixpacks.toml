@@ -1,6 +1,9 @@
 [phases.setup]
 nixPkgs = ["python3", "ffmpeg", "libopus", "libsodium", "deno"]
 
+[variables]
+LD_LIBRARY_PATH = "/nix/var/nix/profiles/default/lib"
+
 [phases.install]
 cmds = [
     "python -m venv .venv", 
