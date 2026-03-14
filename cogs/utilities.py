@@ -12,6 +12,7 @@ class Utilities(commands.Cog):
         self.scheduled_messages.start()
         
         # Scheduled reminders: (channel_id, hour, minute, message)
+        # WARNING: Replace these placeholder channel IDs with real ones!
         self.reminders = [
             (123456789012345678, 20, 0, "⏰ Nhắc nhở: Đã đến giờ nghỉ ngơi!"),
             (123456789012345678, 8, 0, "🌞 Chào buổi sáng! Đừng quên uống nước nhé!")
@@ -48,9 +49,10 @@ class Utilities(commands.Cog):
         await poll_message.add_reaction("❌")
 
     @app_commands.command(name="remindme", description="Gửi tin nhắn nhắc nhở sau một khoảng thời gian")
-    async def remindme(self, interaction: discord.Interaction, time: int, message: str):
-        await interaction.response.send_message(f"⏳ Nhắc bạn sau {time} giây", ephemeral=True)
-        await asyncio.sleep(time)
+    @app_commands.describe(seconds="Số giây muốn nhắc nhở sau")
+    async def remindme(self, interaction: discord.Interaction, seconds: int, message: str):
+        await interaction.response.send_message(f"⏳ Nhắc bạn sau {seconds} giây", ephemeral=True)
+        await asyncio.sleep(seconds)
         await interaction.channel.send(f"⏰ {interaction.user.mention} {message}")
 
     @tasks.loop(minutes=1)
