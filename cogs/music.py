@@ -22,9 +22,9 @@ def _get_cookie_file():
             return name
     return None
 
-# ── yt-dlp Options (no format restriction — let yt-dlp auto-select) ──
+# ── yt-dlp Options ──
 YTDL_OPTS = {
-    # NO 'format' key — yt-dlp uses default (best available). FFMPEG -vn strips video.
+    'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
     'extract_flat': 'in_playlist',
@@ -35,6 +35,13 @@ YTDL_OPTS = {
     'logtostderr': False,
     'no_warnings': True,
     'cookiefile': _get_cookie_file(),
+    'extractor_args': {
+        'youtube': {
+            # WEB client is currently the most robust against datacenter blocks when paired with cookies
+            'player_client': ['web', 'default'],
+            'player_skip': ['webpage', 'configs', 'js']
+        }
+    }
 }
 
 FFMPEG_OPTIONS = {

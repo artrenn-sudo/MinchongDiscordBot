@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python3", "ffmpeg", "libopus", "libsodium"]
+nixPkgs = ["python3", "ffmpeg", "libopus", "libsodium", "nodejs"]
 
 [phases.install]
 cmds = [
