@@ -1,6 +1,8 @@
 @echo off
+echo Upgrading pip...
+python -m pip install --upgrade pip
 echo Installing dependencies...
-python -m pip install -r requirements.txt
+python -m pip install --upgrade -r requirements.txt
 echo Starting bot...
 python main.py
 pause
