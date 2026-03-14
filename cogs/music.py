@@ -35,11 +35,12 @@ YTDL_OPTS = {
     'logtostderr': False,
     'no_warnings': True,
     'cookiefile': _get_cookie_file(),
+    # Crucial bypass instructions for 2026 YouTube datacenter blocks:
+    'impersonate': 'chrome', # Requires Deno (installed via nixpacks)
     'extractor_args': {
         'youtube': {
-            # WEB client is currently the most robust against datacenter blocks when paired with cookies
-            'player_client': ['web', 'default'],
-            'player_skip': ['webpage', 'configs', 'js']
+            'player_client': ['web', 'mweb', 'default'],
+            'player_skip': ['configs']
         }
     }
 }

@@ -1,11 +1,12 @@
 [phases.setup]
-nixPkgs = ["python3", "ffmpeg", "libopus", "libsodium", "nodejs"]
+nixPkgs = ["python3", "ffmpeg", "libopus", "libsodium", "deno"]
 
 [phases.install]
 cmds = [
     "python -m venv .venv", 
     ". .venv/bin/activate && pip install -r requirements.txt",
-    ". .venv/bin/activate && pip install -U --pre yt-dlp[default]"
+    ". .venv/bin/activate && pip install -U --pre yt-dlp[default]",
+    ". .venv/bin/activate && pip install yt-dlp-dp-token"
 ]
 
 [start]
