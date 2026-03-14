@@ -6,51 +6,43 @@ import itertools
 import time
 import logging
 import os
+import re
 
 try:
     from async_timeout import timeout
 except ImportError:
-    # Python 3.11+ has asyncio.timeout built-in
     from asyncio import timeout
 
 logger = logging.getLogger(__name__)
 
-# Constants — Cookie file detection
+# ── Cookie file detection ──
 def _get_cookie_file():
     for name in ('cookies.txt', 'youtube-cookies.txt', 'www.youtube.com_cookies.txt'):
         if os.path.exists(name):
             return name
     return None
 
+# ── yt-dlp Options (format-agnostic to avoid Railway issues) ──
 YTDL_OPTS = {
-    'format': 'ba/b',  # best audio, fallback to best overall
-    'format_sort': ['abr', 'asr'],  # prefer higher audio bitrate
+    'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
     'noplaylist': True,
     'quiet': True,
     'extract_flat': 'in_playlist',
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    # Stability optimizations
     'nocheckcertificate': True,
     'ignoreerrors': False,
     'logtostderr': False,
     'no_warnings': True,
-    # Anti-bot bypass (Cookie File is the best method)
     'cookiefile': _get_cookie_file(),
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['mweb', 'default'],
-        }
-    }
+    # No player_client restriction — let yt-dlp auto-select
 }
 
-# Safer FFMPEG options
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn'
 }
 
-# FFmpeg executable detection
 def _get_ffmpeg_executable():
     if os.path.isfile('ffmpeg.exe'):
         return './ffmpeg.exe'
@@ -66,7 +58,84 @@ except ImportError:
     youtube_dl = None
     logger.error("yt_dlp is not installed! Music commands will not work.")
 
+# ── Spotify Integration ──
+try:
+    import spotipy
+    from spotipy.oauth2 import SpotifyClientCredentials
+    
+    sp_client_id = os.getenv('SPOTIFY_CLIENT_ID')
+    sp_client_secret = os.getenv('SPOTIFY_CLIENT_SECRET')
+    
+    if sp_client_id and sp_client_secret:
+        sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=sp_client_id,
+            client_secret=sp_client_secret
+        ))
+        HAS_SPOTIFY = True
+        logger.info("Spotify integration enabled.")
+    else:
+        sp = None
+        HAS_SPOTIFY = False
+        logger.warning("SPOTIFY_CLIENT_ID/SPOTIFY_CLIENT_SECRET not set. Spotify URLs won't work.")
+except ImportError:
+    sp = None
+    HAS_SPOTIFY = False
+    logger.warning("spotipy not installed. Spotify URLs won't work.")
 
+# Spotify URL patterns
+SPOTIFY_TRACK_RE = re.compile(r'https?://open\.spotify\.com/track/([a-zA-Z0-9]+)')
+SPOTIFY_PLAYLIST_RE = re.compile(r'https?://open\.spotify\.com/playlist/([a-zA-Z0-9]+)')
+SPOTIFY_ALBUM_RE = re.compile(r'https?://open\.spotify\.com/album/([a-zA-Z0-9]+)')
+
+
+def _is_spotify_url(query):
+    return 'open.spotify.com' in query
+
+
+def _get_spotify_tracks(url):
+    """Extract track names from a Spotify URL. Returns list of 'artist - title' strings."""
+    if not HAS_SPOTIFY:
+        return []
+    
+    tracks = []
+    
+    track_match = SPOTIFY_TRACK_RE.search(url)
+    if track_match:
+        track = sp.track(track_match.group(1))
+        artists = ', '.join(a['name'] for a in track['artists'])
+        tracks.append(f"{artists} - {track['name']}")
+        return tracks
+    
+    playlist_match = SPOTIFY_PLAYLIST_RE.search(url)
+    if playlist_match:
+        results = sp.playlist_tracks(playlist_match.group(1))
+        for item in results['items']:
+            t = item.get('track')
+            if t:
+                artists = ', '.join(a['name'] for a in t['artists'])
+                tracks.append(f"{artists} - {t['name']}")
+        # Handle pagination for large playlists
+        while results['next']:
+            results = sp.next(results)
+            for item in results['items']:
+                t = item.get('track')
+                if t:
+                    artists = ', '.join(a['name'] for a in t['artists'])
+                    tracks.append(f"{artists} - {t['name']}")
+        return tracks
+    
+    album_match = SPOTIFY_ALBUM_RE.search(url)
+    if album_match:
+        results = sp.album_tracks(album_match.group(1))
+        for t in results['items']:
+            artists = ', '.join(a['name'] for a in t['artists'])
+            tracks.append(f"{artists} - {t['name']}")
+        return tracks
+    
+    return []
+
+
+# ── YTDLSource ──
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
         super().__init__(source, volume)
@@ -82,6 +151,9 @@ class YTDLSource(discord.PCMVolumeTransformer):
         ytdl = youtube_dl.YoutubeDL(YTDL_OPTS)
 
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+
+        if data is None:
+            raise Exception('Không thể lấy dữ liệu từ URL này.')
 
         if 'entries' in data:
             if not data['entries']:
@@ -107,6 +179,9 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(search, download=False))
 
+        if data is None:
+            raise Exception("Không thể tìm thấy bài hát.")
+
         if 'entries' in data:
             if not data['entries']:
                 raise Exception("Could not find any songs matching your search.")
@@ -115,6 +190,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         return data
 
 
+# ── Music Player ──
 class MusicPlayer:
     __slots__ = ('bot', '_guild', '_channel', '_cog', 'queue', 'next', 'current', 'np', 'volume', 'voice_client',
                  'start_time', 'pause_start', 'pause_duration', 'seeking', 'current_data', 'seek_position', 'loop_mode')
@@ -141,8 +217,7 @@ class MusicPlayer:
         self.current_data = None
         self.seek_position = 0
 
-        # 0: Off, 1: Song, 2: Queue
-        self.loop_mode = 0
+        self.loop_mode = 0  # 0: Off, 1: Song, 2: Queue
 
         asyncio.get_running_loop().create_task(self.player_loop())
 
@@ -153,21 +228,18 @@ class MusicPlayer:
             self.next.clear()
 
             try:
-                # Loop Queue Logic: Re-add current song if needed
                 if self.loop_mode == 2 and self.current_data and not self.seeking:
                     await self.queue.put(self.current_data)
 
-                # Loop Song Logic: Reuse current data
                 if self.loop_mode == 1 and self.current_data and not self.seeking:
                     source_data = self.current_data
                     self.seek_position = 0
                 elif not self.seeking:
-                    async with timeout(300):  # 5 min timeout
+                    async with timeout(300):
                         source_data = await self.queue.get()
                         self.current_data = source_data
                         self.seek_position = 0
                 else:
-                    # Seeking
                     source_data = self.current_data
                     self.seeking = False
 
@@ -181,7 +253,6 @@ class MusicPlayer:
                 return
 
             try:
-                # Source creation (streaming)
                 webpage_url = source_data.get('webpage_url', source_data.get('url'))
                 source = await YTDLSource.from_url(webpage_url, loop=asyncio.get_running_loop(), stream=True, start_time=self.seek_position)
                 self.current = source
@@ -195,14 +266,11 @@ class MusicPlayer:
 
             except Exception as e:
                 import traceback
-                error_trace = traceback.format_exc()
-                logger.error(f"Exception in player_loop: {error_trace}")
-
+                logger.error(f"Exception in player_loop: {traceback.format_exc()}")
                 try:
                     await self._channel.send(f'⚠️ Lỗi phát nhạc: {repr(e)}')
                 except Exception:
                     pass
-                # CRITICAL FIX: Clear current_data to prevent infinite loop of same error
                 self.current_data = None
                 self.next.set()
 
@@ -220,11 +288,9 @@ class MusicPlayer:
     async def seek(self, seconds):
         if not self.voice_client or not self.current:
             return
-        if seconds < 0:
-            seconds = 0
+        seconds = max(0, seconds)
         if self.current.duration and seconds > self.current.duration:
             seconds = self.current.duration - 1
-
         self.seeking = True
         self.seek_position = seconds
         self.voice_client.stop()
@@ -238,15 +304,12 @@ class MusicPlayer:
 
     async def skip(self):
         self.seeking = False
-        # If loop song is on, force skip prevents replaying same song
         forced_loop_reset = False
         if self.loop_mode == 1:
             self.loop_mode = 0
             forced_loop_reset = True
-
         if self.voice_client:
             self.voice_client.stop()
-
         if forced_loop_reset:
             self.current_data = None
             self.loop_mode = 1
@@ -273,14 +336,18 @@ class MusicPlayer:
             value=f"<@{data['requester_id']}>" if 'requester_id' in data else "Unknown",
             inline=True
         )
-
-        status = []
-        if self.loop_mode == 1:
-            status.append("🔂 Lặp bài")
-        if self.loop_mode == 2:
-            status.append("🔁 Lặp hàng đợi")
-        if status:
-            embed.set_footer(text=" | ".join(status))
+        
+        # Spotify source indicator
+        if data.get('spotify_source'):
+            embed.set_footer(text=f"🎵 Từ Spotify | {'🔂 Lặp bài' if self.loop_mode == 1 else '🔁 Lặp hàng đợi' if self.loop_mode == 2 else ''}")
+        else:
+            status = []
+            if self.loop_mode == 1:
+                status.append("🔂 Lặp bài")
+            if self.loop_mode == 2:
+                status.append("🔁 Lặp hàng đợi")
+            if status:
+                embed.set_footer(text=" | ".join(status))
 
         view = MusicControls(self)
         if self.np:
@@ -291,8 +358,9 @@ class MusicPlayer:
         self.np = await self._channel.send(embed=embed, view=view)
 
 
+# ── UI Components ──
 class AddSongModal(discord.ui.Modal, title="mỗi tháng 1 mv"):
-    search_query = discord.ui.TextInput(label="Tên bài hát hoặc URL", placeholder="Nhập tên bài hát...", required=True)
+    search_query = discord.ui.TextInput(label="Tên bài hát hoặc URL", placeholder="Nhập tên bài hát hoặc Spotify URL...", required=True)
 
     def __init__(self, player):
         super().__init__()
@@ -303,13 +371,9 @@ class AddSongModal(discord.ui.Modal, title="mỗi tháng 1 mv"):
         try:
             query = self.search_query.value
             data = await YTDLSource.create_source(self.player, query, loop=asyncio.get_running_loop())
-
-            # Ensure critical keys exist
             if 'webpage_url' not in data and 'url' in data:
                 data['webpage_url'] = data['url']
-
             data['requester_id'] = interaction.user.id
-
             await self.player.queue.put(data)
             await interaction.followup.send(f"mỗi tháng 1 mv: **{data.get('title', 'Unknown')}**", ephemeral=True)
         except Exception as e:
@@ -323,7 +387,6 @@ class MusicControls(discord.ui.View):
         self.update_buttons()
 
     def update_buttons(self):
-        # Update Loop Button style/label based on state
         loop_btn = [x for x in self.children if getattr(x, 'custom_id', None) == "loop_btn"]
         if not loop_btn:
             return
@@ -372,10 +435,9 @@ class MusicControls(discord.ui.View):
 
     @discord.ui.button(label="Loop Off", emoji="➡️", style=discord.ButtonStyle.secondary, custom_id="loop_btn", row=0)
     async def loop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Cycle modes: 0 -> 1 -> 2 -> 0
         self.player.loop_mode = (self.player.loop_mode + 1) % 3
         self.update_buttons()
-        await interaction.response.edit_message(view=self)  # Update view in-place
+        await interaction.response.edit_message(view=self)
 
     @discord.ui.button(label="Add Song", emoji="➕", style=discord.ButtonStyle.success, row=1)
     async def add_song(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -399,24 +461,22 @@ class MusicControls(discord.ui.View):
         await interaction.response.send_message(f"⏩ Seeking to {int(new_pos)}s", ephemeral=True)
 
 
+# ── Main Cog ──
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.players = {}
 
     def cog_unload(self):
-        """Cleanup all players when cog is unloaded."""
         for player in self.players.values():
             asyncio.ensure_future(player.stop())
         self.players.clear()
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
-        """Cleanup player when bot is disconnected from voice."""
         if member.id != self.bot.user.id:
             return
         if before.channel and not after.channel:
-            # Bot was disconnected
             guild_id = before.channel.guild.id
             if guild_id in self.players:
                 await self.players[guild_id].stop()
@@ -439,7 +499,7 @@ class Music(commands.Cog):
         await ctx.reply(f"helu this is minchong bo't {channel.name}")
         return True
 
-    # --- Slash Commands ---
+    # ── Slash Commands ──
     @app_commands.command(name="join")
     async def join_slash(self, interaction: discord.Interaction):
         ctx = await commands.Context.from_interaction(interaction)
@@ -449,7 +509,7 @@ class Music(commands.Cog):
     async def leave_slash(self, interaction: discord.Interaction):
         await self._leave(await commands.Context.from_interaction(interaction))
 
-    @app_commands.command(name="play")
+    @app_commands.command(name="play", description="Phát nhạc từ YouTube hoặc Spotify URL")
     async def play_slash(self, interaction: discord.Interaction, search: str):
         ctx = await commands.Context.from_interaction(interaction)
         await self._play(ctx, search)
@@ -482,7 +542,7 @@ class Music(commands.Cog):
     async def stop_slash(self, interaction: discord.Interaction):
         await self._stop(await commands.Context.from_interaction(interaction))
 
-    # --- Text Commands (Prefixed) ---
+    # ── Text Commands ──
     @commands.command(name="join", aliases=["j"])
     async def join_text(self, ctx):
         await self._join(ctx)
@@ -518,7 +578,7 @@ class Music(commands.Cog):
         modes = ["Off", "Song", "Queue"]
         await ctx.reply(f"🔁 Loop mode: **{modes[player.loop_mode]}**")
 
-    # --- Shared Logic ---
+    # ── Shared Logic ──
     async def _leave(self, ctx):
         if ctx.guild.voice_client:
             await ctx.guild.voice_client.disconnect()
@@ -533,7 +593,6 @@ class Music(commands.Cog):
             if not await self._join(ctx):
                 return
 
-        # Determine valid reply method (slash or text)
         reply = ctx.send if isinstance(ctx, commands.Context) else ctx.interaction.followup.send
         if hasattr(ctx, 'interaction') and ctx.interaction and not ctx.interaction.response.is_done():
             await ctx.interaction.response.defer()
@@ -541,6 +600,49 @@ class Music(commands.Cog):
 
         player = self.get_player(ctx)
 
+        # ── Spotify URL handling ──
+        if _is_spotify_url(search):
+            if not HAS_SPOTIFY:
+                await reply("❌ Spotify chưa được cấu hình. Cần set SPOTIFY_CLIENT_ID và SPOTIFY_CLIENT_SECRET.")
+                return
+            
+            try:
+                tracks = await asyncio.get_running_loop().run_in_executor(None, lambda: _get_spotify_tracks(search))
+                
+                if not tracks:
+                    await reply("❌ Không tìm thấy bài hát từ Spotify URL.")
+                    return
+                
+                is_playlist = len(tracks) > 1
+                
+                if is_playlist:
+                    await reply(f"🎵 Đang thêm **{len(tracks)} bài** từ Spotify playlist...")
+                
+                added = 0
+                for track_query in tracks:
+                    try:
+                        data = await YTDLSource.create_source(player, track_query, loop=asyncio.get_running_loop())
+                        data['requester_id'] = ctx.author.id
+                        data['spotify_source'] = True
+                        await player.queue.put(data)
+                        added += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to add Spotify track '{track_query}': {e}")
+                        continue
+                
+                if is_playlist:
+                    await reply(f"✅ Đã thêm **{added}/{len(tracks)}** bài từ Spotify playlist!")
+                elif added > 0:
+                    await reply(f"🎵 va sau day la: **{tracks[0]}**")
+                else:
+                    await reply("❌ Không thể tìm bài hát trên YouTube.")
+                    
+            except Exception as e:
+                logger.error(f"Spotify error: {e}")
+                await reply(f"❌ Lỗi Spotify: {e}")
+            return
+
+        # ── Normal YouTube search/URL ──
         try:
             data = await YTDLSource.create_source(player, search, loop=asyncio.get_running_loop())
             data['requester_id'] = ctx.author.id
@@ -579,7 +681,8 @@ class Music(commands.Cog):
         upcoming = list(itertools.islice(player.queue._queue, 0, 10))
         desc = ""
         for i, song in enumerate(upcoming):
-            desc += f"**{i+1}.** {song['title']}\n"
+            prefix = "🎵 " if song.get('spotify_source') else ""
+            desc += f"**{i+1}.** {prefix}{song['title']}\n"
 
         embed = discord.Embed(title=f"Queue ({player.queue.qsize()})", description=desc)
         if isinstance(ctx, commands.Context):
