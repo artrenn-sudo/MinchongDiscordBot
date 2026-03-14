@@ -23,6 +23,13 @@ class MinchongBot(commands.Bot):
         super().__init__(command_prefix=["r!", "!"], intents=intents, help_command=commands.DefaultHelpCommand())
 
     async def setup_hook(self):
+        # Explicitly load libopus for Railway/Nixpacks environments
+        if not discord.opus.is_loaded():
+            try:
+                discord.opus.load_opus('libopus.so.0')
+            except Exception as e:
+                logger.warning(f"Failed to explicitly load libopus: {e}")
+
         # Load extensions/cogs
         for filename in os.listdir('./cogs'):
             if filename.endswith('.py') and filename != '__init__.py':
