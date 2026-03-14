@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Constants — Cookie file detection
 def _get_cookie_file():
-    for name in ('cookies.txt', 'www.youtube.com_cookies.txt'):
+    for name in ('cookies.txt', 'youtube-cookies.txt', 'www.youtube.com_cookies.txt'):
         if os.path.exists(name):
             return name
     return None
